@@ -1,0 +1,52 @@
+name: Daily commit
+
+on:
+  schedule:
+    # UTC 01:17 = Asia/Shanghai 09:17. GitHub may delay scheduled runs.
+    - cron: '17 1 * * *'
+  workflow_dispatch:
+    inputs:
+      verify_only:
+        description: Check configuration without creating commits
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: daily-commit
+  cancel-in-progress: false
+
+jobs:
+  commit:
+    # Template is inert until installed. Verification works before activation.
+    if: vars.AUTO_COMMIT_ENABLED == 'true' || (github.event_name == 'workflow_dispatch' && inputs.verify_only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout program
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Update target repository
+        env:
+          GITHUB_TOKEN: ${{ secrets.TARGET_TOKEN || github.token }}
+          HAS_TARGET_TOKEN: ${{ secrets.TARGET_TOKEN != '' }}
+          SOURCE_REPOSITORY: ${{ github.repository }}
+          TARGET_REPOSITORY: ${{ vars.TARGET_REPOSITORY || github.repository }}
+          TARGET_BRANCH: ${{ vars.TARGET_BRANCH }}
+          COMMIT_FILE: ${{ vars.COMMIT_FILE || 'activity/daily.json' }}
+          COMMIT_NAME: ${{ vars.COMMIT_NAME }}
+          COMMIT_EMAIL: ${{ vars.COMMIT_EMAIL }}
+          VERIFY_ONLY: ${{ github.event_name == 'workflow_dispatch' && inputs.verify_only }}
+        run: |
+          if [ "$VERIFY_ONLY" = "true" ]; then
+            python scripts/daily_commit.py --check
+          else
+            python scripts/daily_commit.py
+          fi
